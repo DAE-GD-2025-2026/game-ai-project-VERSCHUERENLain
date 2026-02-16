@@ -54,3 +54,21 @@ public:
 protected:
 	float FleeRadius{300.f};
 };
+
+//ARRIVE
+class Arrive : public Seek
+{
+public:
+	Arrive() = default;
+	virtual ~Arrive() = default;
+
+	SteeringOutput CalculateSteering(float DeltaT, ASteeringAgent& Agent) override;
+	float GetSlowRadius() const { return SlowRadius; }
+	float GetTargetRadius() const { return TargetRadius; }
+	float GetOriginalMaxSpeed() const { return OriginalMaxSpeed; }
+
+protected:
+	float SlowRadius{200.f};
+	float TargetRadius{10.f};
+	float OriginalMaxSpeed{0.f};
+};

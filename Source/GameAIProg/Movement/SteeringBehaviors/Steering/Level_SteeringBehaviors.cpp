@@ -200,6 +200,17 @@ void ALevel_SteeringBehaviors::Tick(float DeltaTime)
 				DrawDebugLine(GetWorld(), AgentPos, TargetPos, FColor::Cyan, false, -1.f, 0, 1.f);
 				DrawDebugPoint(GetWorld(), TargetPos, 10.f, FColor::Cyan, false, -1.f);
 			}
+			else if (a.SelectedBehavior == static_cast<int>(BehaviorTypes::Arrive))
+			{
+				// arrive: line + dot + slow radius (yellow) + target radius (green)
+				DrawDebugLine(GetWorld(), AgentPos, TargetPos, FColor::Cyan, false, -1.f, 0, 1.f);
+				DrawDebugPoint(GetWorld(), TargetPos, 10.f, FColor::Cyan, false, -1.f);
+				Arrive* arrive = a.Behavior->As<Arrive>();
+				DrawDebugCircle(GetWorld(), TargetPos, arrive->GetSlowRadius(), 32,
+					FColor::Yellow, false, -1.f, 0, 1.f, FVector::YAxisVector, FVector::XAxisVector);
+				DrawDebugCircle(GetWorld(), TargetPos, arrive->GetTargetRadius(), 32,
+					FColor::Green, false, -1.f, 0, 1.f, FVector::YAxisVector, FVector::XAxisVector);
+			}
 			else if (a.SelectedBehavior == static_cast<int>(BehaviorTypes::Flee))
 			{
 				// flee: line from agent to target + flee radius circle
@@ -244,6 +255,15 @@ void ALevel_SteeringBehaviors::RemoveAgent(unsigned int Index)
 
 void ALevel_SteeringBehaviors::SetAgentBehavior(ImGui_Agent& Agent)
 {
+	// restore speed if switching away from arrive
+	if (Agent.Behavior && Agent.PreviousBehavior == static_cast<int>(BehaviorTypes::Arrive))
+	{
+		Arrive* arrive = Agent.Behavior->As<Arrive>();
+		if (arrive->GetOriginalMaxSpeed() > 0.f)
+			Agent.Agent->SetMaxLinearSpeed(arrive->GetOriginalMaxSpeed());
+	}
+
+	Agent.PreviousBehavior = Agent.SelectedBehavior;
 	Agent.Behavior.reset();
 	
 	switch (static_cast<BehaviorTypes>(Agent.SelectedBehavior))
@@ -253,6 +273,9 @@ void ALevel_SteeringBehaviors::SetAgentBehavior(ImGui_Agent& Agent)
 		break;
 	case BehaviorTypes::Flee:
 		Agent.Behavior = std::make_unique<Flee>();
+		break;
+	case BehaviorTypes::Arrive:
+		Agent.Behavior = std::make_unique<Arrive>();
 		break;
 	default:
 		Agent.Behavior = std::make_unique<Seek>();
