@@ -1,7 +1,6 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "SteeringAgent.h"
-#include "DrawDebugHelpers.h"
 
 
 // Sets default values
@@ -31,20 +30,6 @@ void ASteeringAgent::Tick(float DeltaTime)
 	{
 		SteeringOutput output = SteeringBehavior->CalculateSteering(DeltaTime, *this);
 		AddMovementInput(FVector{output.LinearVelocity, 0.f});
-
-		if (bIsDebugRenderingEnabled)
-		{
-			FVector AgentPos = GetActorLocation();
-
-			// Current velocity (green)
-			FVector2D Vel2D = GetLinearVelocity();
-			FVector VelEnd = AgentPos + FVector{Vel2D.X, Vel2D.Y, 0.f};
-			DrawDebugLine(GetWorld(), AgentPos, VelEnd, FColor::Green, false, -1.f, 0, 2.f);
-
-			// Desired velocity / steering output (cyan)
-			FVector DesiredEnd = AgentPos + FVector{output.LinearVelocity.X, output.LinearVelocity.Y, 0.f};
-			DrawDebugLine(GetWorld(), AgentPos, DesiredEnd, FColor::Cyan, false, -1.f, 0, 2.f);
-		}
 	}
 }
 

@@ -5,6 +5,7 @@
 #include <format>
 #include <string>
 #include "imgui.h"
+#include "DrawDebugHelpers.h"
 
 
 // Sets default values
@@ -185,6 +186,28 @@ void ALevel_SteeringBehaviors::Tick(float DeltaTime)
 		if (a.Agent)
 		{
 			UpdateTarget(a);
+
+			if (!a.Agent->GetDebugRenderingEnabled())
+				continue;
+
+			FVector AgentPos = a.Agent->GetActorLocation();
+			FVector2D TargetPos2D = a.Behavior->GetTarget().Position;
+			FVector TargetPos{TargetPos2D.X, TargetPos2D.Y, AgentPos.Z};
+
+			if (a.SelectedBehavior == static_cast<int>(BehaviorTypes::Seek))
+			{
+				// seek: line from agent to target + dot at target
+				DrawDebugLine(GetWorld(), AgentPos, TargetPos, FColor::Cyan, false, -1.f, 0, 1.f);
+				DrawDebugPoint(GetWorld(), TargetPos, 10.f, FColor::Cyan, false, -1.f);
+			}
+			else if (a.SelectedBehavior == static_cast<int>(BehaviorTypes::Flee))
+			{
+				// flee: line from agent to target + flee radius circle
+				DrawDebugLine(GetWorld(), AgentPos, TargetPos, FColor::Red, false, -1.f, 0, 1.f);
+				Flee* flee = a.Behavior->As<Flee>();
+				DrawDebugCircle(GetWorld(), TargetPos, flee->GetFleeRadius(), 32,
+					FColor::Red, false, -1.f, 0, 1.f, FVector::YAxisVector, FVector::XAxisVector);
+			}
 		}
 	}
 }
@@ -228,8 +251,11 @@ void ALevel_SteeringBehaviors::SetAgentBehavior(ImGui_Agent& Agent)
 	case BehaviorTypes::Seek:
 		Agent.Behavior = std::make_unique<Seek>();
 		break;
+	case BehaviorTypes::Flee:
+		Agent.Behavior = std::make_unique<Flee>();
+		break;
 	default:
-		Agent.Behavior = std::make_unique<Seek>(); // fallback to Seek until other behaviors are implemented
+		Agent.Behavior = std::make_unique<Seek>();
 		break;
 	}
 
