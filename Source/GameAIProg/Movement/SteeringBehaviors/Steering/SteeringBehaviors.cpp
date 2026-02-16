@@ -19,6 +19,26 @@ SteeringOutput Seek::CalculateSteering(float DeltaT, ASteeringAgent& Agent)
 	return steering;
 }
 
+//WANDER
+SteeringOutput Wander::CalculateSteering(float DeltaT, ASteeringAgent& Agent)
+{
+	// random angle offset from previous wander angle
+	float RandomOffset = FMath::FRandRange(-MaxAngleChange, MaxAngleChange);
+	WanderAngle += RandomOffset;
+
+	// circle center = agent position + forward direction * offset distance
+	float AgentYaw = FMath::DegreesToRadians(Agent.GetRotation());
+	FVector2D AgentForward{FMath::Cos(AgentYaw), FMath::Sin(AgentYaw)};
+	FVector2D CircleCenter = Agent.GetPosition() + AgentForward * OffsetDistance;
+
+	// point on circle using wander angle
+	FVector2D WanderTarget = CircleCenter + FVector2D{FMath::Cos(WanderAngle), FMath::Sin(WanderAngle)} * Radius;
+
+	// seek towards the wander target
+	Target.Position = WanderTarget;
+	return Seek::CalculateSteering(DeltaT, Agent);
+}
+
 //FLEE
 SteeringOutput Flee::CalculateSteering(float DeltaT, ASteeringAgent& Agent)
 {
@@ -99,6 +119,21 @@ SteeringOutput Pursuit::CalculateSteering(float DeltaT, ASteeringAgent& Agent)
 	Target.Position += Target.LinearVelocity * t;
 
 	SteeringOutput steering = Seek::CalculateSteering(DeltaT, Agent);
+
+	Target = OriginalTarget;
+	return steering;
+}
+
+//EVADE
+SteeringOutput Evade::CalculateSteering(float DeltaT, ASteeringAgent& Agent)
+{
+	float Distance = (Target.Position - Agent.GetPosition()).Size();
+	float t = Distance / Agent.GetMaxLinearSpeed();
+
+	FTargetData OriginalTarget = Target;
+	Target.Position += Target.LinearVelocity * t;
+
+	SteeringOutput steering = Flee::CalculateSteering(DeltaT, Agent);
 
 	Target = OriginalTarget;
 	return steering;

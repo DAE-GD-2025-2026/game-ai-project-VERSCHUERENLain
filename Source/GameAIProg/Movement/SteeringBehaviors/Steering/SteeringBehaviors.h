@@ -41,6 +41,30 @@ protected:
 	float StopRadius{10.f};
 };
 
+//WANDER
+class Wander : public Seek
+{
+public:
+	Wander() = default;
+	virtual ~Wander() = default;
+
+	SteeringOutput CalculateSteering(float DeltaT, ASteeringAgent& Agent) override;
+
+	void SetWanderOffset(float offset) { OffsetDistance = offset; }
+	void SetWanderRadius(float radius) { Radius = radius; }
+	void SetMaxAngleChange(float rad) { MaxAngleChange = rad; }
+
+	float GetOffsetDistance() const { return OffsetDistance; }
+	float GetRadius() const { return Radius; }
+	float GetWanderAngle() const { return WanderAngle; }
+
+protected:
+	float OffsetDistance{200.f};
+	float Radius{100.f};
+	float MaxAngleChange{FMath::DegreesToRadians(45.f)};
+	float WanderAngle{0.f};
+};
+
 //FLEE
 class Flee : public Seek
 {
@@ -89,6 +113,16 @@ class Pursuit : public Seek
 public:
 	Pursuit() = default;
 	virtual ~Pursuit() = default;
+
+	SteeringOutput CalculateSteering(float DeltaT, ASteeringAgent& Agent) override;
+};
+
+//EVADE
+class Evade : public Flee
+{
+public:
+	Evade() = default;
+	virtual ~Evade() = default;
 
 	SteeringOutput CalculateSteering(float DeltaT, ASteeringAgent& Agent) override;
 };
