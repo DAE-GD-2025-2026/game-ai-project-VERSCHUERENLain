@@ -5,6 +5,7 @@
 #include <format>
 #include <string>
 #include "imgui.h"
+#include "DrawDebugHelpers.h"
 
 
 // Sets default values
@@ -114,7 +115,7 @@ void ALevel_SteeringBehaviors::Tick(float DeltaTime)
 			ImGui::PushItemWidth(100);
 
 			// Add the names of your steering behaviors
-			if (ImGui::Combo("", &a.SelectedBehavior, "Seek\0Wander\0Flee\0Arrive\0Evade\0Pursuit", 4))
+			if (ImGui::Combo("", &a.SelectedBehavior, "Seek\0Wander\0Flee\0Arrive\0Evade\0Pursuit\0Face", 5))
 			{
 				bBehaviourModified = true;
 			}
@@ -185,6 +186,88 @@ void ALevel_SteeringBehaviors::Tick(float DeltaTime)
 		if (a.Agent)
 		{
 			UpdateTarget(a);
+
+			if (!a.Agent->GetDebugRenderingEnabled())
+				continue;
+
+			FVector AgentPos = a.Agent->GetActorLocation();
+			FVector2D TargetPos2D = a.Behavior->GetTarget().Position;
+			FVector TargetPos{TargetPos2D.X, TargetPos2D.Y, AgentPos.Z};
+
+			if (a.SelectedBehavior == static_cast<int>(BehaviorTypes::Seek))
+			{
+				// seek: line from agent to target + dot at target
+				DrawDebugLine(GetWorld(), AgentPos, TargetPos, FColor::Cyan, false, -1.f, 0, 1.f);
+				DrawDebugPoint(GetWorld(), TargetPos, 10.f, FColor::Cyan, false, -1.f);
+			}
+			else if (a.SelectedBehavior == static_cast<int>(BehaviorTypes::Wander))
+			{
+				// wander: circle + dot at wander target + line from agent to target
+				Wander* wander = a.Behavior->As<Wander>();
+				float Yaw = FMath::DegreesToRadians(a.Agent->GetActorRotation().Yaw);
+				FVector Forward{FMath::Cos(Yaw), FMath::Sin(Yaw), 0.f};
+				FVector CircleCenter = AgentPos + Forward * wander->GetOffsetDistance();
+				DrawDebugCircle(GetWorld(), CircleCenter, wander->GetRadius(), 32,
+					FColor::Green, false, -1.f, 0, 1.f, FVector::YAxisVector, FVector::XAxisVector);
+				// wander target = where the behavior is actually seeking
+				FVector2D WanderTarget2D = a.Behavior->GetTarget().Position;
+				FVector WanderTarget{WanderTarget2D.X, WanderTarget2D.Y, AgentPos.Z};
+				DrawDebugPoint(GetWorld(), WanderTarget, 10.f, FColor::Green, false, -1.f);
+				DrawDebugLine(GetWorld(), AgentPos, WanderTarget, FColor::Green, false, -1.f, 0, 1.f);
+			}
+			else if (a.SelectedBehavior == static_cast<int>(BehaviorTypes::Arrive))
+			{
+				// arrive: line + dot + slow radius (yellow) + target radius (green)
+				DrawDebugLine(GetWorld(), AgentPos, TargetPos, FColor::Cyan, false, -1.f, 0, 1.f);
+				DrawDebugPoint(GetWorld(), TargetPos, 10.f, FColor::Cyan, false, -1.f);
+				Arrive* arrive = a.Behavior->As<Arrive>();
+				DrawDebugCircle(GetWorld(), TargetPos, arrive->GetSlowRadius(), 32,
+					FColor::Yellow, false, -1.f, 0, 1.f, FVector::YAxisVector, FVector::XAxisVector);
+				DrawDebugCircle(GetWorld(), TargetPos, arrive->GetTargetRadius(), 32,
+					FColor::Green, false, -1.f, 0, 1.f, FVector::YAxisVector, FVector::XAxisVector);
+			}
+			else if (a.SelectedBehavior == static_cast<int>(BehaviorTypes::Face))
+			{
+				// face: magenta line to target + white facing direction
+				DrawDebugLine(GetWorld(), AgentPos, TargetPos, FColor::Magenta, false, -1.f, 0, 1.f);
+				float Yaw = a.Agent->GetActorRotation().Yaw;
+				float Rad = FMath::DegreesToRadians(Yaw);
+				FVector FacingEnd = AgentPos + FVector{FMath::Cos(Rad), FMath::Sin(Rad), 0.f} * 150.f;
+				DrawDebugLine(GetWorld(), AgentPos, FacingEnd, FColor::White, false, -1.f, 0, 2.f);
+			}
+			else if (a.SelectedBehavior == static_cast<int>(BehaviorTypes::Pursuit))
+			{
+				// pursuit: cyan line to actual target, yellow line to predicted position
+				DrawDebugLine(GetWorld(), AgentPos, TargetPos, FColor::Cyan, false, -1.f, 0, 1.f);
+				float Dist = FVector::Dist(AgentPos, TargetPos);
+				float t = Dist / a.Agent->GetMaxLinearSpeed();
+				FVector2D TargetVel = a.Behavior->GetTarget().LinearVelocity;
+				FVector PredictedPos = TargetPos + FVector{TargetVel.X, TargetVel.Y, 0.f} * t;
+				DrawDebugLine(GetWorld(), AgentPos, PredictedPos, FColor::Yellow, false, -1.f, 0, 2.f);
+				DrawDebugPoint(GetWorld(), PredictedPos, 10.f, FColor::Yellow, false, -1.f);
+			}
+			else if (a.SelectedBehavior == static_cast<int>(BehaviorTypes::Flee))
+			{
+				// flee: line from agent to target + flee radius circle
+				DrawDebugLine(GetWorld(), AgentPos, TargetPos, FColor::Red, false, -1.f, 0, 1.f);
+				Flee* flee = a.Behavior->As<Flee>();
+				DrawDebugCircle(GetWorld(), TargetPos, flee->GetFleeRadius(), 32,
+					FColor::Red, false, -1.f, 0, 1.f, FVector::YAxisVector, FVector::XAxisVector);
+			}
+			else if (a.SelectedBehavior == static_cast<int>(BehaviorTypes::Evade))
+			{
+				// evade: red line to actual target, orange line to predicted position + flee radius
+				DrawDebugLine(GetWorld(), AgentPos, TargetPos, FColor::Red, false, -1.f, 0, 1.f);
+				float Dist = FVector::Dist(AgentPos, TargetPos);
+				float t = Dist / a.Agent->GetMaxLinearSpeed();
+				FVector2D TargetVel = a.Behavior->GetTarget().LinearVelocity;
+				FVector PredictedPos = TargetPos + FVector{TargetVel.X, TargetVel.Y, 0.f} * t;
+				DrawDebugLine(GetWorld(), AgentPos, PredictedPos, FColor::Orange, false, -1.f, 0, 2.f);
+				DrawDebugPoint(GetWorld(), PredictedPos, 10.f, FColor::Orange, false, -1.f);
+				Evade* evade = a.Behavior->As<Evade>();
+				DrawDebugCircle(GetWorld(), PredictedPos, evade->GetFleeRadius(), 32,
+					FColor::Orange, false, -1.f, 0, 1.f, FVector::YAxisVector, FVector::XAxisVector);
+			}
 		}
 	}
 }
@@ -221,6 +304,19 @@ void ALevel_SteeringBehaviors::RemoveAgent(unsigned int Index)
 
 void ALevel_SteeringBehaviors::SetAgentBehavior(ImGui_Agent& Agent)
 {
+	// restore auto-orient if switching away from face
+	if (Agent.PreviousBehavior == static_cast<int>(BehaviorTypes::Face))
+		Agent.Agent->SetIsAutoOrienting(true);
+
+	// restore speed if switching away from arrive
+	if (Agent.Behavior && Agent.PreviousBehavior == static_cast<int>(BehaviorTypes::Arrive))
+	{
+		Arrive* arrive = Agent.Behavior->As<Arrive>();
+		if (arrive->GetOriginalMaxSpeed() > 0.f)
+			Agent.Agent->SetMaxLinearSpeed(arrive->GetOriginalMaxSpeed());
+	}
+
+	Agent.PreviousBehavior = Agent.SelectedBehavior;
 	Agent.Behavior.reset();
 	
 	switch (static_cast<BehaviorTypes>(Agent.SelectedBehavior))
@@ -228,8 +324,27 @@ void ALevel_SteeringBehaviors::SetAgentBehavior(ImGui_Agent& Agent)
 	case BehaviorTypes::Seek:
 		Agent.Behavior = std::make_unique<Seek>();
 		break;
+	case BehaviorTypes::Wander:
+		Agent.Behavior = std::make_unique<Wander>();
+		break;
+	case BehaviorTypes::Flee:
+		Agent.Behavior = std::make_unique<Flee>();
+		break;
+	case BehaviorTypes::Arrive:
+		Agent.Behavior = std::make_unique<Arrive>();
+		break;
+	case BehaviorTypes::Face:
+		Agent.Behavior = std::make_unique<Face>();
+		Agent.Agent->SetIsAutoOrienting(false);
+		break;
+	case BehaviorTypes::Pursuit:
+		Agent.Behavior = std::make_unique<Pursuit>();
+		break;
+	case BehaviorTypes::Evade:
+		Agent.Behavior = std::make_unique<Evade>();
+		break;
 	default:
-		Agent.Behavior = std::make_unique<Seek>(); // fallback to Seek until other behaviors are implemented
+		Agent.Behavior = std::make_unique<Seek>();
 		break;
 	}
 
