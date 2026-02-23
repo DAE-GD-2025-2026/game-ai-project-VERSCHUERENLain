@@ -108,8 +108,10 @@ void ALevel_SpacePartitioning::Tick(float DeltaTime)
 
 		if (pFlock)
 		{
-			ImGui::Checkbox("Debug Neighborhood", &pFlock->GetDebugRenderNeighborhood());
-			ImGui::Checkbox("Debug Steering", &pFlock->GetDebugRenderSteering());
+			ImGui::Checkbox("Use Space Partitioning", &pFlock->GetUseSpacePartitioning());
+			ImGui::Checkbox("Debug render neighborhood", &pFlock->GetDebugRenderNeighborhood());
+			ImGui::Checkbox("Debug render steering", &pFlock->GetDebugRenderSteering());
+			ImGui::Checkbox("Debug render partitions", &pFlock->GetDebugRenderPartitions());
 
 			ImGui::Spacing();
 			ImGui::Text("Behavior Weights");

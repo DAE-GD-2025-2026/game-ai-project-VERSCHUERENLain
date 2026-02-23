@@ -18,8 +18,6 @@ Flock::Flock(
 	, AgentClass{AgentClass}
 {
 	Agents.SetNum(FlockSize);
-
-	// memory pool: fixed-size array, NrOfNeighbors is the active element count
 	Neighbors.SetNum(FlockSize);
 
 	// spawn agents at random posiitons within the world bounds
@@ -34,6 +32,21 @@ Flock::Flock(
 		Agents[i] = pWorld->SpawnActor<ASteeringAgent>(AgentClass, spawnPos, FRotator::ZeroRotator);
 		if (IsValid(Agents[i]))
 			Agents[i]->SetActorTickEnabled(false); // manually driven from Flock::Tick
+	}
+
+	// create spatial partitioning grid (25x25)
+	int nrCells = 25;
+	pCellSpace = std::make_unique<CellSpace>(pWorld, WorldSize, WorldSize, nrCells, nrCells, FlockSize);
+	OldPositions.SetNum(FlockSize);
+
+	// add all agents to the cell space and store initial positions
+	for (int i = 0; i < FlockSize; ++i)
+	{
+		if (IsValid(Agents[i]))
+		{
+			pCellSpace->AddAgent(*Agents[i]);
+			OldPositions[i] = Agents[i]->GetPosition();
+		}
 	}
 
 	// create shared behaviors (same state for all agents is fine)
@@ -89,12 +102,55 @@ void Flock::Tick(float DeltaTime)
 		pEvadeBehavior->SetTarget(evadeTarget);
 	}
 
-	for (ASteeringAgent* agent : Agents)
+	for (int i = 0; i < Agents.Num(); ++i)
 	{
-		if (!IsValid(agent)) continue;
-		RegisterNeighbors(agent); // fill memory pool for this specific agent
-		agent->Tick(DeltaTime);   // neighbors valid only during this call
+		if (!IsValid(Agents[i])) continue;
+		RegisterNeighbors(Agents[i]);
+		Agents[i]->Tick(DeltaTime);
+
+		// update cell after agent moved
+		if (bUseSpacePartitioning)
+		{
+			pCellSpace->UpdateAgentCell(*Agents[i], OldPositions[i]);
+			OldPositions[i] = Agents[i]->GetPosition();
+		}
 	}
+}
+
+void Flock::RegisterNeighbors(ASteeringAgent* const Agent)
+{
+	if (bUseSpacePartitioning)
+		RegisterNeighbors_Partitioned(Agent);
+	else
+		RegisterNeighbors_BruteForce(Agent);
+}
+
+void Flock::RegisterNeighbors_BruteForce(ASteeringAgent* const pAgent)
+{
+	NrOfNeighbors = 0;
+	FVector2D agentPos = pAgent->GetPosition();
+
+	for (ASteeringAgent* other : Agents)
+	{
+		if (other == pAgent || !IsValid(other)) continue;
+		float dist = FVector2D::Distance(agentPos, other->GetPosition());
+		if (dist < NeighborhoodRadius)
+		{
+			Neighbors[NrOfNeighbors] = other;
+			++NrOfNeighbors;
+		}
+	}
+}
+
+void Flock::RegisterNeighbors_Partitioned(ASteeringAgent* const pAgent)
+{
+	pCellSpace->RegisterNeighbors(*pAgent, NeighborhoodRadius);
+
+	// copy results to unified neighbor storage
+	NrOfNeighbors = pCellSpace->GetNrOfNeighbors();
+	const auto& cellNeighbors = pCellSpace->GetNeighbors();
+	for (int i = 0; i < NrOfNeighbors; ++i)
+		Neighbors[i] = cellNeighbors[i];
 }
 
 void Flock::RenderDebug()
@@ -115,6 +171,20 @@ void Flock::RenderDebug()
 
 	if (DebugRenderNeighborhood)
 		RenderNeighborhood();
+
+	if (DebugRenderPartitions && pCellSpace)
+	{
+		// only show red highlights when SP is active and neighborhood debug triggers a query
+		std::vector<int> highlighted;
+		if (bUseSpacePartitioning && Agents.Num() > 0 && IsValid(Agents[0]))
+		{
+			// re-query agent 0 so LastQueriedCells is fresh for this frame
+			pCellSpace->RegisterNeighbors(*Agents[0], NeighborhoodRadius);
+			highlighted = pCellSpace->GetLastQueriedCells();
+		}
+
+		pCellSpace->RenderCells(highlighted);
+	}
 }
 
 void Flock::ImGuiRender(ImVec2 const& WindowPos, ImVec2 const& WindowSize)
@@ -207,26 +277,6 @@ void Flock::RenderNeighborhood()
 		DrawDebugLine(pWorld, firstPos, Neighbors[i]->GetActorLocation(), FColor::Green, false, -1.f, 0, 3.f);
 	}
 }
-
-#ifndef GAMEAI_USE_SPACE_PARTITIONING
-void Flock::RegisterNeighbors(ASteeringAgent* const pAgent)
-{
-	NrOfNeighbors = 0;
-	FVector2D agentPos = pAgent->GetPosition();
-
-	for (ASteeringAgent* other : Agents)
-	{
-		if (other == pAgent || !IsValid(other)) continue;
-		float dist = FVector2D::Distance(agentPos, other->GetPosition());
-		if (dist < NeighborhoodRadius)
-		{
-			// memory pool: overwrite at index, no push_back or clear
-			Neighbors[NrOfNeighbors] = other;
-			++NrOfNeighbors;
-		}
-	}
-}
-#endif
 
 FVector2D Flock::GetAverageNeighborPos() const
 {

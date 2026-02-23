@@ -21,7 +21,7 @@ struct Cell final
 	Cell(float Left, float Bottom, float Width, float Height);
 
 	std::vector<FVector2D> GetRectPoints() const;
-	
+
 	// all the agents currently in this cell
 	std::list<ASteeringAgent*> Agents;
 	FRect BoundingBox;
@@ -43,16 +43,19 @@ public:
 
 	//empties the cells of entities
 	void EmptyCells();
-	void RenderCells()const;
+	void RenderCells(const std::vector<int>& HighlightedCells) const;
+
+	// indices of cells checked during the last RegisterNeighbors call
+	const std::vector<int>& GetLastQueriedCells() const { return LastQueriedCells; }
 
 private:
 	// For debug draw purposes
 	UWorld* pWorld{};
-	
+
 	// Cells and properties
 	std::vector<Cell> Cells;
 	FVector2D CellOrigin{};
-	
+
 	float SpaceWidth;
 	float SpaceHeight;
 
@@ -65,6 +68,9 @@ private:
 	// Members to avoid memory allocation on every frame
 	TArray<ASteeringAgent*> Neighbors;
 	int NrOfNeighbors;
+
+	// tracks which cells were checked in the last RegisterNeighbors call
+	std::vector<int> LastQueriedCells;
 
 	// Helper functions
 	int PositionToIndex(FVector2D const & Pos) const;
