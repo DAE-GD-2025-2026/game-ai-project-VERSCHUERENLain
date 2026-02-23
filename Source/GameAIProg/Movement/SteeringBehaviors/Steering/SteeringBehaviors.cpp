@@ -136,5 +136,10 @@ SteeringOutput Evade::CalculateSteering(float DeltaT, ASteeringAgent& Agent)
 	SteeringOutput steering = Flee::CalculateSteering(DeltaT, Agent);
 
 	Target = OriginalTarget;
+
+	// outside flee radius: mark invalid so priority steering can fall through
+	if (steering.LinearVelocity.IsNearlyZero())
+		steering.IsValid = false;
+
 	return steering;
 }

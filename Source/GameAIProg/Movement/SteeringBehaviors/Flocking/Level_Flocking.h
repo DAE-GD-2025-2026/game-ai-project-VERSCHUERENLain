@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "Flock.h"
 #include "Shared/Level_Base.h"
+#include "Movement/SteeringBehaviors/Steering/SteeringBehaviors.h"
+#include <memory>
 #include "Level_Flocking.generated.h"
 
 UCLASS()
@@ -24,9 +26,10 @@ protected:
 	bool bUseMouseTarget{true};
 
 	int const FlockSize{100};
-
 	TUniquePtr<Flock> pFlock{};
 	
-	UPROPERTY(EditAnywhere, Category = "Flocking")
-	ASteeringAgent* pAgentToEvade{nullptr}; // non owning ref
+	ASteeringAgent* pAgentToEvade{nullptr}; // non owning, spawned in BeginPlay
+
+	// wander behavior for the evade agent so it moves around
+	std::unique_ptr<Wander> pEvadeAgentWander{};
 };
