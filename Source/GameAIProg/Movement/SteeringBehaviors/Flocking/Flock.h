@@ -1,4 +1,4 @@
-﻿#pragma once
+﻿	#pragma once
 
 // Toggle this define to enable/disable spatial partitioning
 // #define GAMEAI_USE_SPACE_PARTITIONING
@@ -58,21 +58,26 @@ private:
 	TArray<ASteeringAgent*> Neighbors{};
 #endif // USE_SPACE_PARTITIONING
 	
-	float NeighborhoodRadius{200.f};
+	float NeighborhoodRadius{350.f};
 	int NrOfNeighbors{0};
 
 	ASteeringAgent* pAgentToEvade{nullptr};
 	
-	//Steering Behaviors
-	//std::unique_ptr<Separation> pSeparationBehavior{};
-	//std::unique_ptr<Cohesion> pCohesionBehavior{};
-	//std::unique_ptr<VelocityMatch> pVelMatchBehavior{};
-	//std::unique_ptr<Seek> pSeekBehavior{};
-	//std::unique_ptr<Wander> pWanderBehavior{};
-	//std::unique_ptr<Evade> pEvadeBehavior{};
-	
-	std::unique_ptr<BlendedSteering> pBlendedSteering{};
-	std::unique_ptr<PrioritySteering> pPrioritySteering{};
+	// shared steering behaviors (one instance, all agents read same data) yuppers should work
+	std::unique_ptr<Separation>    pSeparationBehavior{};
+	std::unique_ptr<Cohesion>      pCohesionBehavior{};
+	std::unique_ptr<VelocityMatch> pVelMatchBehavior{};
+	std::unique_ptr<Seek>          pSeekBehavior{};
+	std::unique_ptr<Evade>         pEvadeBehavior{};
+
+	// per-agent wander (each agent needs its own wander state)
+	TArray<std::unique_ptr<Wander>>           pWanderBehaviors{};
+	// per-agent blended + priority (cuss blended contains a per-agent wander ptr)
+	TArray<std::unique_ptr<BlendedSteering>>  pBlendedSteeringPerAgent{};
+	TArray<std::unique_ptr<PrioritySteering>> pPrioritySteeringPerAgent{};
+
+	float WorldSize{0.f};
+	TSubclassOf<ASteeringAgent> AgentClass{};
 
 	// UI and rendering
 	bool DebugRenderSteering{false};

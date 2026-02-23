@@ -19,6 +19,16 @@ void ALevel_Flocking::BeginPlay()
 	TrimWorld->SetTrimWorldSize(3000.f);
 	TrimWorld->bShouldTrimWorld = true;
 
+	// spawn the evade target using BP_EvadeAgent blueprint, idk mann im just trying to do what the ppt says
+	UClass* evadeClass = LoadObject<UClass>(nullptr, TEXT("/Game/Movement/Steering/BP_EvadeAgent.BP_EvadeAgent_C"));
+	if (!evadeClass) evadeClass = SteeringAgentClass; // fallback if path is wrong
+	pAgentToEvade = GetWorld()->SpawnActor<ASteeringAgent>(evadeClass, FVector{0.f, 0.f, 90.f}, FRotator::ZeroRotator);
+	if (IsValid(pAgentToEvade))
+	{
+		pEvadeAgentWander = std::make_unique<Wander>();
+		pAgentToEvade->SetSteeringBehavior(pEvadeAgentWander.get());
+	}
+
 	pFlock = TUniquePtr<Flock>(
 		new Flock(
 			GetWorld(),
