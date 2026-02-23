@@ -61,7 +61,7 @@ public:
 protected:
 	float OffsetDistance{200.f};
 	float Radius{100.f};
-	float MaxAngleChange{FMath::DegreesToRadians(45.f)};
+	float MaxAngleChange{FMath::DegreesToRadians(10.f)};
 	float WanderAngle{0.f};
 };
 
