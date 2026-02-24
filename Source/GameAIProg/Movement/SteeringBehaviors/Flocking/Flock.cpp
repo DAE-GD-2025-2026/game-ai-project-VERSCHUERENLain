@@ -1,4 +1,5 @@
 #include "Flock.h"
+#include "Movement/SteeringBehaviors/SpacePartitioning/SpacePartitioning.h"
 #include "FlockingSteeringBehaviors.h"
 #include "Shared/ImGuiHelpers.h"
 #include "DrawDebugHelpers.h"
@@ -18,12 +19,12 @@ Flock::Flock(
 	, AgentClass{AgentClass}
 {
 	Agents.SetNum(FlockSize);
-
-	// memory pool: fixed-size array, NrOfNeighbors is the active element count
 	Neighbors.SetNum(FlockSize);
 
-	// spawn agents at random posiitons within the world bounds
+	// spawn agents at random positions within the world bounds
 	float halfSize = WorldSize * 0.5f;
+	FActorSpawnParameters spawnParams;
+	spawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	for (int i = 0; i < FlockSize; ++i)
 	{
 		FVector spawnPos{
@@ -31,10 +32,33 @@ Flock::Flock(
 			FMath::RandRange(-halfSize, halfSize),
 			90.f
 		};
-		Agents[i] = pWorld->SpawnActor<ASteeringAgent>(AgentClass, spawnPos, FRotator::ZeroRotator);
+		Agents[i] = pWorld->SpawnActor<ASteeringAgent>(AgentClass, spawnPos, FRotator::ZeroRotator, spawnParams);
 		if (IsValid(Agents[i]))
 			Agents[i]->SetActorTickEnabled(false); // manually driven from Flock::Tick
 	}
+
+	// create spatial partitioning grid (12x12), slightly oversized to reduce agents being skipped near edges
+	int nrCells = 12;
+	float gridSize = WorldSize * 1.1f;
+	pCellSpace = std::make_unique<CellSpace>(pWorld, gridSize, gridSize, nrCells, nrCells, FlockSize);
+	OldPositions.SetNum(FlockSize);
+
+	// add all agents to the cell space and store initial positions
+	for (int i = 0; i < FlockSize; ++i)
+	{
+		if (IsValid(Agents[i]))
+		{
+			pCellSpace->AddAgent(*Agents[i]);
+			OldPositions[i] = Agents[i]->GetPosition();
+		}
+	}
+
+	// create quadtree for hierarchical spatial partitioning
+	float halfWorld = WorldSize * 0.5f;
+	FRect quadBounds;
+	quadBounds.Min = { -halfWorld, -halfWorld };
+	quadBounds.Max = {  halfWorld,  halfWorld };
+	pQuadTree = std::make_unique<QuadTree>(pWorld, quadBounds, FlockSize, 4, 8);
 
 	// create shared behaviors (same state for all agents is fine)
 	pCohesionBehavior   = std::make_unique<Cohesion>(this);
@@ -89,12 +113,76 @@ void Flock::Tick(float DeltaTime)
 		pEvadeBehavior->SetTarget(evadeTarget);
 	}
 
-	for (ASteeringAgent* agent : Agents)
+	// rebuild quadtree from scratch each frame (simplest for moving agents)
+	if (bUseHISP && pQuadTree)
 	{
-		if (!IsValid(agent)) continue;
-		RegisterNeighbors(agent); // fill memory pool for this specific agent
-		agent->Tick(DeltaTime);   // neighbors valid only during this call
+		pQuadTree->Clear();
+		for (ASteeringAgent* agent : Agents)
+			if (IsValid(agent)) pQuadTree->Insert(agent);
 	}
+
+	for (int i = 0; i < Agents.Num(); ++i)
+	{
+		if (!IsValid(Agents[i])) continue;
+		RegisterNeighbors(Agents[i]);
+		Agents[i]->Tick(DeltaTime);
+
+		// always update flat grid cells so debug counts stay correct
+		if (pCellSpace)
+		{
+			pCellSpace->UpdateAgentCell(*Agents[i], OldPositions[i]);
+			OldPositions[i] = Agents[i]->GetPosition();
+		}
+	}
+}
+
+void Flock::RegisterNeighbors(ASteeringAgent* const Agent)
+{
+	if (bUseHISP)
+		RegisterNeighbors_QuadTree(Agent);
+	else if (bUseSpacePartitioning)
+		RegisterNeighbors_Partitioned(Agent);
+	else
+		RegisterNeighbors_BruteForce(Agent);
+}
+
+void Flock::RegisterNeighbors_BruteForce(ASteeringAgent* const pAgent)
+{
+	NrOfNeighbors = 0;
+	FVector2D agentPos = pAgent->GetPosition();
+
+	for (ASteeringAgent* other : Agents)
+	{
+		if (other == pAgent || !IsValid(other)) continue;
+		float dist = FVector2D::Distance(agentPos, other->GetPosition());
+		if (dist < NeighborhoodRadius)
+		{
+			Neighbors[NrOfNeighbors] = other;
+			++NrOfNeighbors;
+		}
+	}
+}
+
+void Flock::RegisterNeighbors_Partitioned(ASteeringAgent* const pAgent)
+{
+	pCellSpace->RegisterNeighbors(*pAgent, NeighborhoodRadius);
+
+	// copy results to unified neighbor storage
+	NrOfNeighbors = pCellSpace->GetNrOfNeighbors();
+	const auto& cellNeighbors = pCellSpace->GetNeighbors();
+	for (int i = 0; i < NrOfNeighbors; ++i)
+		Neighbors[i] = cellNeighbors[i];
+}
+
+void Flock::RegisterNeighbors_QuadTree(ASteeringAgent* const pAgent)
+{
+	pQuadTree->RegisterNeighbors(*pAgent, NeighborhoodRadius);
+
+	// copy results to unified neighbor storage
+	NrOfNeighbors = pQuadTree->GetNrOfNeighbors();
+	const auto& qtNeighbors = pQuadTree->GetNeighbors();
+	for (int i = 0; i < NrOfNeighbors; ++i)
+		Neighbors[i] = qtNeighbors[i];
 }
 
 void Flock::RenderDebug()
@@ -115,6 +203,31 @@ void Flock::RenderDebug()
 
 	if (DebugRenderNeighborhood)
 		RenderNeighborhood();
+
+	if (DebugRenderPartitions)
+	{
+		if (bUseHISP && pQuadTree)
+		{
+			// re-query agent 0 to get fresh queried leaves for red highlighting
+			std::vector<FRect> highlighted;
+			if (Agents.Num() > 0 && IsValid(Agents[0]))
+			{
+				pQuadTree->RegisterNeighbors(*Agents[0], NeighborhoodRadius);
+				highlighted = pQuadTree->GetLastQueriedLeaves();
+			}
+			pQuadTree->RenderCells(highlighted);
+		}
+		else if (pCellSpace)
+		{
+			std::vector<int> highlighted;
+			if (bUseSpacePartitioning && Agents.Num() > 0 && IsValid(Agents[0]))
+			{
+				pCellSpace->RegisterNeighbors(*Agents[0], NeighborhoodRadius);
+				highlighted = pCellSpace->GetLastQueriedCells();
+			}
+			pCellSpace->RenderCells(highlighted);
+		}
+	}
 }
 
 void Flock::ImGuiRender(ImVec2 const& WindowPos, ImVec2 const& WindowSize)
@@ -195,10 +308,22 @@ void Flock::RenderNeighborhood()
 	RegisterNeighbors(Agents[0]);
 
 	FVector firstPos = Agents[0]->GetActorLocation();
+	FVector2D agentPos2D = Agents[0]->GetPosition();
 
 	// yellow circle showing neighborhood radius around first agent
 	DrawDebugCircle(pWorld, firstPos, NeighborhoodRadius, 32,
 		FColor::Yellow, false, -1.f, 0, 3.f, FVector::YAxisVector, FVector::XAxisVector);
+
+	// query bounding box around the agent
+	const float z = 91.f;
+	FVector bl{agentPos2D.X - NeighborhoodRadius, agentPos2D.Y - NeighborhoodRadius, z};
+	FVector tl{agentPos2D.X - NeighborhoodRadius, agentPos2D.Y + NeighborhoodRadius, z};
+	FVector tr{agentPos2D.X + NeighborhoodRadius, agentPos2D.Y + NeighborhoodRadius, z};
+	FVector br{agentPos2D.X + NeighborhoodRadius, agentPos2D.Y - NeighborhoodRadius, z};
+	DrawDebugLine(pWorld, bl, tl, FColor::Orange, false, -1.f, 0, 3.f);
+	DrawDebugLine(pWorld, tl, tr, FColor::Orange, false, -1.f, 0, 3.f);
+	DrawDebugLine(pWorld, tr, br, FColor::Orange, false, -1.f, 0, 3.f);
+	DrawDebugLine(pWorld, br, bl, FColor::Orange, false, -1.f, 0, 3.f);
 
 	// green lines to each current neighbor
 	for (int i = 0; i < NrOfNeighbors; ++i)
@@ -207,26 +332,6 @@ void Flock::RenderNeighborhood()
 		DrawDebugLine(pWorld, firstPos, Neighbors[i]->GetActorLocation(), FColor::Green, false, -1.f, 0, 3.f);
 	}
 }
-
-#ifndef GAMEAI_USE_SPACE_PARTITIONING
-void Flock::RegisterNeighbors(ASteeringAgent* const pAgent)
-{
-	NrOfNeighbors = 0;
-	FVector2D agentPos = pAgent->GetPosition();
-
-	for (ASteeringAgent* other : Agents)
-	{
-		if (other == pAgent || !IsValid(other)) continue;
-		float dist = FVector2D::Distance(agentPos, other->GetPosition());
-		if (dist < NeighborhoodRadius)
-		{
-			// memory pool: overwrite at index, no push_back or clear
-			Neighbors[NrOfNeighbors] = other;
-			++NrOfNeighbors;
-		}
-	}
-}
-#endif
 
 FVector2D Flock::GetAverageNeighborPos() const
 {
