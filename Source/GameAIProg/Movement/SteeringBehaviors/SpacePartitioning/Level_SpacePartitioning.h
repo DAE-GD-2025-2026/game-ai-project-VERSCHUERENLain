@@ -62,7 +62,7 @@ private:
 	TArray<ASteeringAgent*> Neighbors{};
 	int NrOfNeighbors{0};
 
-	float WorldSize{3000.f};
+	float WorldSize{4000.f};
 
 	void RebuildAgents();
 	void SetAllAgentsBehavior();
