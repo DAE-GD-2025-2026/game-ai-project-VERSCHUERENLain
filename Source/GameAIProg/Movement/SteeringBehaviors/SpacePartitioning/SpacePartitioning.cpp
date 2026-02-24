@@ -178,8 +178,7 @@ bool CellSpace::DoRectsOverlap(FRect const & RectA, FRect const & RectB)
 	return true;
 }
 
-// --- QuadTree ---
-// ----------------
+// QuadTree
 QuadTree::QuadTree(UWorld* pWorld, FRect Bounds, int MaxEntities, int MaxAgentsPerNode, int MaxDepth)
 	: pWorld{pWorld}
 	, MaxAgentsPerNode{MaxAgentsPerNode}
@@ -210,11 +209,11 @@ void QuadTree::Subdivide(Node& node)
 		node.Children[i]->Depth = node.Depth + 1;
 	}
 
-	// NW: top-left
+	// Nw: top-left
 	node.Children[0]->Bounds = { {node.Bounds.Min.X, midY}, {midX, node.Bounds.Max.Y} };
 	// NE: top-right
 	node.Children[1]->Bounds = { {midX, midY}, {node.Bounds.Max.X, node.Bounds.Max.Y} };
-	// SW: bottom-left
+	// SW: bottom-let
 	node.Children[2]->Bounds = { {node.Bounds.Min.X, node.Bounds.Min.Y}, {midX, midY} };
 	// SE: bottom-right
 	node.Children[3]->Bounds = { {midX, node.Bounds.Min.Y}, {node.Bounds.Max.X, midY} };
@@ -270,7 +269,7 @@ void QuadTree::InsertIntoNode(Node& node, ASteeringAgent* Agent)
 				return;
 			}
 		}
-		// edge case: agent exactly on max boundary — put in last child
+		// edge case: agent exactly on max boundary — put in last child 
 		InsertIntoNode(*node.Children[3], Agent);
 	}
 }
@@ -357,7 +356,7 @@ void QuadTree::RenderNode(const Node& node, const std::vector<FRect>& QueriedLea
 	}
 	else
 	{
-		// draw this node's bounds in blue, then recurse
+		// draw this node's bounds in blue
 		DrawRect(node.Bounds, FColor::Blue, 5.f);
 		for (int i = 0; i < 4; ++i)
 			RenderNode(*node.Children[i], QueriedLeaves);
