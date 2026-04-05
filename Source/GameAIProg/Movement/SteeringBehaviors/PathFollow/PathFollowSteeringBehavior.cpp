@@ -5,7 +5,6 @@ PathFollow::PathFollow()
 {
 	pSeek = new Seek();
 	pArrive = new Arrive();
-	pArrive->SetTargetRadius(10.0f);
 }
 
 PathFollow::~PathFollow()
@@ -17,7 +16,7 @@ PathFollow::~PathFollow()
 void PathFollow::SetPath(std::vector<FVector2D>& path)
 {
 	pathVec = path;  
-	
+	pCurrentSteering = nullptr;
 	currentPathIndex = -1;
 	GotoNextPathPoint();
 }
@@ -46,7 +45,11 @@ SteeringOutput PathFollow::CalculateSteering(float DeltaTime, ASteeringAgent& Ag
 void PathFollow::GotoNextPathPoint()
 {
 	++currentPathIndex;
-	if (currentPathIndex >= static_cast<int>(pathVec.size())) return;
+	if (currentPathIndex >= static_cast<int>(pathVec.size()))
+	{
+		pCurrentSteering = nullptr;
+		return;
+	}
 	
 	if (currentPathIndex == pathVec.size() -1)
 	{
