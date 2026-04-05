@@ -22,6 +22,12 @@ std::array<FVector, 3> TriPolygon::Triangle::GetVertices(TriPolygon const& Poly)
 	return { Poly.Vertices[VertexIndices[0]], Poly.Vertices[VertexIndices[1]], Poly.Vertices[VertexIndices[2]] };
 }
 
+FVector2D TriPolygon::Triangle::GetCentroid(TriPolygon const& Poly) const
+{
+	FVector const centroid = (GetVertex0(Poly) + GetVertex1(Poly) + GetVertex2(Poly)) / 3.0f;
+	return FVector2D{ centroid };
+}
+
 std::vector<int> TriPolygon::Triangle::GetNeighbors(TriPolygon const& Poly) const
 {
 	return Poly.GetTriangleNeighbors(*this);
@@ -153,11 +159,42 @@ std::vector<int> TriPolygon::GetTriangleNeighbors(Triangle const& InTriangle) co
 	return {};
 }
 
+std::vector<int> TriPolygon::GetTriangleIndicesFromEdgeIndex(int EdgeIdx) const
+{
+	std::vector<int> TriangleIndices{};
+	if (EdgeIdx < 0 || EdgeIdx >= static_cast<int>(Edges.size()))
+	{
+		return TriangleIndices;
+	}
+
+	for (int TriangleIdx = 0; TriangleIdx < static_cast<int>(Triangles.size()); ++TriangleIdx)
+	{
+		if (Triangles[TriangleIdx].HasEdge(Edges[EdgeIdx]))
+		{
+			TriangleIndices.push_back(TriangleIdx);
+		}
+	}
+
+	return TriangleIndices;
+}
+
 std::optional<int> TriPolygon::FindTriangleIndex(TArray<FVector> const& TriangleData) const
 {
 	for (int TriangleIndex = 0; TriangleIndex < static_cast<int>(Triangles.size()); ++TriangleIndex)
 	{
 		if (Triangles[TriangleIndex].Equals(TriangleData, *this))
+		{
+			return TriangleIndex;
+		}
+	}
+	return std::nullopt;
+}
+
+std::optional<int> TriPolygon::FindTriangleIndex(Triangle const& TriangleData) const
+{
+	for (int TriangleIndex = 0; TriangleIndex < static_cast<int>(Triangles.size()); ++TriangleIndex)
+	{
+		if (Triangles[TriangleIndex] == TriangleData)
 		{
 			return TriangleIndex;
 		}

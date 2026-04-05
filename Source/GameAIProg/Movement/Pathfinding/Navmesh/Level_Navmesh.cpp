@@ -4,6 +4,7 @@
 
 #include "NavigationSystem.h"
 #include "AI/NavigationSystemBase.h"
+#include "DrawDebugHelpers.h"
 #include "NavMesh/RecastNavMesh.h"
 #include "Runtime/Navmesh/Public/Detour/DetourNavMesh.h"
 #include "Shared/GameAISpectator.h"
@@ -93,22 +94,59 @@ void ALevel_Navmesh::Tick(float DeltaTime)
 
 	if (bDrawPath)
 	{
-		for (int PathIdx = 1; PathIdx < static_cast<int>(DebugDrawPath.size()); ++PathIdx)
+		bool bSmoothedPathDiffersFromRaw = DebugDrawPath.size() != DebugNodePositions.size();
+		if (!bSmoothedPathDiffersFromRaw)
+		{
+			for (int PathIdx = 0; PathIdx < static_cast<int>(DebugDrawPath.size()); ++PathIdx)
+			{
+				if (!DebugDrawPath[PathIdx].Equals(DebugNodePositions[PathIdx], 0.1f))
+				{
+					bSmoothedPathDiffersFromRaw = true;
+					break;
+				}
+			}
+		}
+
+		for (int PathIdx = 1; PathIdx < static_cast<int>(DebugNodePositions.size()); ++PathIdx)
 		{
 			DrawDebugLine(
 				GetWorld(),
-				FVector{ DebugDrawPath[PathIdx - 1], 5.0f },
-				FVector{ DebugDrawPath[PathIdx], 5.0f },
-				FColor::Magenta, false, -1, 1, 10);
+				FVector{ DebugNodePositions[PathIdx - 1], 7.5f },
+				FVector{ DebugNodePositions[PathIdx], 7.5f },
+				FColor::Cyan, false, -1, 0, 2.0f);
+		}
+
+		if (bSmoothedPathDiffersFromRaw)
+		{
+			for (int PathIdx = 1; PathIdx < static_cast<int>(DebugDrawPath.size()); ++PathIdx)
+			{
+				DrawDebugLine(
+					GetWorld(),
+					FVector{ DebugDrawPath[PathIdx - 1], 5.0f },
+					FVector{ DebugDrawPath[PathIdx], 5.0f },
+					FColor::Magenta, false, -1, 1, 10);
+			}
 		}
 	}
 
 	if (bDrawPortals)
 	{
-		for (GameAI::NavLine const& Portal : DebugPortals)
+		for (int PortalIdx = 0; PortalIdx < static_cast<int>(DebugPortals.size()); ++PortalIdx)
 		{
+			GameAI::NavLine const& Portal = DebugPortals[PortalIdx];
 			DrawDebugLine(GetWorld(), FVector{ Portal.P1, 15.0f }, FVector{ Portal.P2, 15.0f },
 				FColor::Green, false, -1, 0, 3.0f);
+			DrawDebugPoint(GetWorld(), FVector{ Portal.P1, 15.0f }, 12.0f, FColor::Red, false, -1.0f, 0);
+			DrawDebugPoint(GetWorld(), FVector{ Portal.P2, 15.0f }, 12.0f, FColor::Blue, false, -1.0f, 0);
+
+			bool const bIsDegenerateStartOrEnd =
+				Portal.P1.Equals(Portal.P2, 0.1f) && (PortalIdx == 0 || PortalIdx == static_cast<int>(DebugPortals.size()) - 1);
+			if (!bIsDegenerateStartOrEnd)
+			{
+				FVector2D const PortalCenter = (Portal.P1 + Portal.P2) * 0.5f;
+				DrawDebugString(GetWorld(), FVector{ PortalCenter, 20.0f },
+					FString::Printf(TEXT("%d"), PortalIdx - 1), nullptr, FColor::White, 0.0f, false);
+			}
 		}
 	}
 
@@ -159,6 +197,8 @@ void ALevel_Navmesh::UpdateImGui()
 		ImGui::Checkbox("NavGraph", &bDrawNavGraph);
 		ImGui::Checkbox("Path", &bDrawPath);
 		ImGui::Checkbox("Portals", &bDrawPortals);
+		ImGui::TextUnformatted("path legend: cyan raw, magenta smoothed");
+		ImGui::TextUnformatted("portal legend: red right, blue left");
 
 		ImGui::End();
 	}

@@ -26,6 +26,7 @@ public:
 		FVector GetVertex2(TriPolygon const& Poly) const { return Poly.Vertices[VertexIndices[2]]; }
 
 		std::array<FVector, 3> GetVertices(TriPolygon const& Poly) const;
+		FVector2D GetCentroid(TriPolygon const& Poly) const;
 		std::vector<int> GetNeighbors(TriPolygon const& Poly) const;
 		std::array<Edge, 3> GetEdges() const;
 
@@ -49,8 +50,10 @@ public:
 
 	std::vector<int> GetTriangleNeighbors(int InTriangleIndex) const;
 	std::vector<int> GetTriangleNeighbors(Triangle const& InTriangle) const;
+	std::vector<int> GetTriangleIndicesFromEdgeIndex(int EdgeIdx) const;
 
 	std::optional<int> FindTriangleIndex(TArray<FVector> const& TriangleData) const;
+	std::optional<int> FindTriangleIndex(Triangle const& TriangleData) const;
 	std::optional<int> FindVertexIndex(FVector const& Vertex) const;
 	std::optional<int> FindEdgeIndex(Edge const& Edge) const;
 

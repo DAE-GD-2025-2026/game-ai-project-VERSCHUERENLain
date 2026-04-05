@@ -5,6 +5,11 @@
 
 namespace GameAI::Utilities::Geo
 {
+	inline constexpr float CrossZ(const FVector2D& A, const FVector2D& B)
+	{
+		return A.X * B.Y - A.Y * B.X;
+	}
+
 	inline float DistanceSquarePointToLine(const FVector2D& p1, const FVector2D& p2, const FVector2D& point)
 	{
 		const float p1p2_squareDistance = FVector2D::DistSquared(p1, p2);
