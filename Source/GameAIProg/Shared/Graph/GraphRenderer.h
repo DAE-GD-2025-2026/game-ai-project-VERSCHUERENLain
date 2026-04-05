@@ -1,4 +1,5 @@
 #pragma once
+#include <utility>
 #include "Graph.h"
 #include "GraphConcepts.h"
 
@@ -19,6 +20,7 @@ namespace GameAI
 		// Nodes
 		bool bDrawNodes{true};
 		bool bDrawNodeIds{true};
+		bool bDrawHighlightedNodes{true};
 		
 		// Connections
 		bool bDrawConnections{true};
@@ -32,16 +34,25 @@ namespace GameAI
 		~GraphRenderer() = default;
 		
 		void SetRenderOptions(GraphRenderOptions const & NewOptions);
+		GraphRenderOptions const& GetRenderOptions() const { return Options; }
+		void SetHighlightedNodes(std::vector<std::pair<int, FColor>> const& NodesToHighlight);
 		
 		void RenderGraph(Graph const & Graph) const;
 
 	private:
 		UWorld* World;
 		GraphRenderOptions Options{};
+		std::vector<std::pair<int, FColor>> HighlightedNodes;
 		
 		template <typename NodeType>
 		requires GameAI::is_drawable_node<NodeType>
 		void DrawNode(NodeType const & Node, float Radius = Graphs::DefaultNodeDrawRadius,
+			FColor Color = Graphs::DefaultNodeDrawColor, float DrawHeight = Graphs::DefaultGraphDrawHeight,
+			int Segments = Graphs::DefaultNodeDrawSegments) const;
+
+		template <typename NodeType>
+		requires GameAI::is_drawable_node<NodeType>
+		void DrawNodeSphere(NodeType const& Node, float Radius = Graphs::DefaultNodeDrawRadius,
 			FColor Color = Graphs::DefaultNodeDrawColor, float DrawHeight = Graphs::DefaultGraphDrawHeight,
 			int Segments = Graphs::DefaultNodeDrawSegments) const;
 		
@@ -71,10 +82,36 @@ namespace GameAI
 		DrawDebugCircle(World, DrawTransform.ToMatrixNoScale(), Radius, Segments, Color, 
 			false, -1, 0, 3);
 
-		if (Options.bDrawConnections)
+		if (Options.bDrawNodeIds)
 		{
 			FString NodeId{FString::Printf(TEXT("%d"), static_cast<int>(Node.GetId()))};
 			DrawDebugString(World, DrawTransform.GetLocation(), NodeId,nullptr, FColor::White, 0);
+		}
+	}
+
+	template <typename NodeType>
+	requires GameAI::is_drawable_node<NodeType>
+	void GraphRenderer::DrawNodeSphere(NodeType const& Node, float Radius,
+		FColor Color, float DrawHeight, int Segments) const
+	{
+		if constexpr (requires {{Node.GetRadius()} -> std::convertible_to<float>;} )
+		{
+			Radius = Node.GetRadius();
+		}
+		if constexpr (requires {{ Node.GetColor() } -> std::convertible_to<FColor>;} )
+		{
+			Color = Node.GetColor();
+		}
+
+		FTransform DrawTransform{FVector::UpVector.ToOrientationRotator(),
+			FVector{Node.GetPosition(), DrawHeight}};
+		DrawDebugSphere(World, DrawTransform.GetLocation(), Radius, Segments, Color,
+			false, -1, 0, 3);
+
+		if (Options.bDrawNodeIds)
+		{
+			FString NodeId{FString::Printf(TEXT("%d"), static_cast<int>(Node.GetId()))};
+			DrawDebugString(World, DrawTransform.GetLocation(), NodeId, nullptr, FColor::White, 0);
 		}
 	}
 	
