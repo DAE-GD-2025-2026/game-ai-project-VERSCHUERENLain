@@ -150,6 +150,17 @@ namespace
 		FVector2D const& StartPos, FVector2D const& EndPos, std::vector<NavLine>& OutPortals,
 		int& OutFailedPortalIndex, int& OutFailedEdgeIndex)
 	{
+		struct PortalBuildData final
+		{
+			FVector2D A{};
+			FVector2D B{};
+			FVector2D Midpoint{};
+			FVector2D FallbackDirection{};
+			int VertexIdxA{ Graphs::InvalidNodeId };
+			int VertexIdxB{ Graphs::InvalidNodeId };
+			int EdgeIdx{ Graphs::InvalidNodeId };
+		};
+
 		OutPortals.clear();
 		OutFailedPortalIndex = -1;
 		OutFailedEdgeIndex = -1;
@@ -159,7 +170,8 @@ namespace
 			return false;
 		}
 
-		OutPortals.push_back({ StartPos, StartPos });
+		std::vector<PortalBuildData> PortalData{};
+		PortalData.reserve(TriangleStrip.size() > 0 ? TriangleStrip.size() - 1 : 0);
 
 		for (int StripIdx = 1; StripIdx < static_cast<int>(TriangleStrip.size()); ++StripIdx)
 		{
@@ -188,18 +200,124 @@ namespace
 			TriPolygon::Edge const& PortalEdge = NavPoly.GetEdges()[SharedEdgeIdx];
 			FVector2D const PortalA{ PortalEdge.GetP1(NavPoly) };
 			FVector2D const PortalB{ PortalEdge.GetP2(NavPoly) };
-			FVector2D const CorridorDirection = NextCentroid - CurrentCentroid;
-			float const CrossA = Utilities::Geo::CrossZ(CorridorDirection, PortalA - CurrentCentroid);
-			float const CrossB = Utilities::Geo::CrossZ(CorridorDirection, PortalB - CurrentCentroid);
+			PortalBuildData Data{};
+			Data.A = PortalA;
+			Data.B = PortalB;
+			Data.Midpoint = (PortalA + PortalB) * 0.5f;
+			Data.FallbackDirection = NextCentroid - CurrentCentroid;
+			Data.VertexIdxA = PortalEdge.EdgeIndices[0];
+			Data.VertexIdxB = PortalEdge.EdgeIndices[1];
+			Data.EdgeIdx = SharedEdgeIdx;
+			PortalData.push_back(Data);
+		}
+
+		OutPortals.push_back({ StartPos, StartPos });
+		if (PortalData.empty())
+		{
+			OutPortals.push_back({ EndPos, EndPos });
+			return true;
+		}
+
+		auto OrientPortalFromDirection = [](PortalBuildData const& Portal, FVector2D const& Anchor, FVector2D const& Direction,
+			NavLine& OutPortal, int& OutRightVertexIdx, int& OutLeftVertexIdx)
+		{
+			float const CrossA = Utilities::Geo::CrossZ(Direction, Portal.A - Anchor);
+			float const CrossB = Utilities::Geo::CrossZ(Direction, Portal.B - Anchor);
 
 			if (CrossA <= CrossB)
 			{
-				OutPortals.push_back({ PortalA, PortalB });
+				OutPortal = { Portal.A, Portal.B };
+				OutRightVertexIdx = Portal.VertexIdxA;
+				OutLeftVertexIdx = Portal.VertexIdxB;
 			}
 			else
 			{
-				OutPortals.push_back({ PortalB, PortalA });
+				OutPortal = { Portal.B, Portal.A };
+				OutRightVertexIdx = Portal.VertexIdxB;
+				OutLeftVertexIdx = Portal.VertexIdxA;
 			}
+		};
+
+		int PreviousRightVertexIdx = Graphs::InvalidNodeId;
+		int PreviousLeftVertexIdx = Graphs::InvalidNodeId;
+		{
+			PortalBuildData const& FirstPortal = PortalData[0];
+			FVector2D InitialDirection = (PortalData.size() > 1) ? (PortalData[1].Midpoint - StartPos) : (EndPos - StartPos);
+			if (InitialDirection.SquaredLength() <= KINDA_SMALL_NUMBER)
+			{
+				InitialDirection = FirstPortal.FallbackDirection;
+			}
+			if (InitialDirection.SquaredLength() <= KINDA_SMALL_NUMBER)
+			{
+				return false;
+			}
+
+			NavLine OrientedFirstPortal{};
+			OrientPortalFromDirection(FirstPortal, StartPos, InitialDirection, OrientedFirstPortal, PreviousRightVertexIdx, PreviousLeftVertexIdx);
+			OutPortals.push_back(OrientedFirstPortal);
+		}
+
+		for (int PortalIdx = 1; PortalIdx < static_cast<int>(PortalData.size()); ++PortalIdx)
+		{
+			PortalBuildData const& Portal = PortalData[PortalIdx];
+			OutFailedPortalIndex = PortalIdx;
+			OutFailedEdgeIndex = Portal.EdgeIdx;
+
+			bool const bSharedA = (Portal.VertexIdxA == PreviousRightVertexIdx || Portal.VertexIdxA == PreviousLeftVertexIdx);
+			bool const bSharedB = (Portal.VertexIdxB == PreviousRightVertexIdx || Portal.VertexIdxB == PreviousLeftVertexIdx);
+
+			NavLine OrientedPortal{};
+			int CurrentRightVertexIdx = Graphs::InvalidNodeId;
+			int CurrentLeftVertexIdx = Graphs::InvalidNodeId;
+
+			if (bSharedA != bSharedB)
+			{
+				if (Portal.VertexIdxA == PreviousRightVertexIdx)
+				{
+					OrientedPortal = { Portal.A, Portal.B };
+					CurrentRightVertexIdx = Portal.VertexIdxA;
+					CurrentLeftVertexIdx = Portal.VertexIdxB;
+				}
+				else if (Portal.VertexIdxA == PreviousLeftVertexIdx)
+				{
+					OrientedPortal = { Portal.B, Portal.A };
+					CurrentRightVertexIdx = Portal.VertexIdxB;
+					CurrentLeftVertexIdx = Portal.VertexIdxA;
+				}
+				else if (Portal.VertexIdxB == PreviousRightVertexIdx)
+				{
+					OrientedPortal = { Portal.B, Portal.A };
+					CurrentRightVertexIdx = Portal.VertexIdxB;
+					CurrentLeftVertexIdx = Portal.VertexIdxA;
+				}
+				else
+				{
+					OrientedPortal = { Portal.A, Portal.B };
+					CurrentRightVertexIdx = Portal.VertexIdxA;
+					CurrentLeftVertexIdx = Portal.VertexIdxB;
+				}
+			}
+			else
+			{
+				FVector2D const PrevPoint = PortalData[PortalIdx - 1].Midpoint;
+				FVector2D const NextPoint = (PortalIdx + 1 < static_cast<int>(PortalData.size())) ? PortalData[PortalIdx + 1].Midpoint : EndPos;
+
+				FVector2D TravelDirection = NextPoint - PrevPoint;
+				if (TravelDirection.SquaredLength() <= KINDA_SMALL_NUMBER)
+				{
+					TravelDirection = Portal.FallbackDirection;
+				}
+				if (TravelDirection.SquaredLength() <= KINDA_SMALL_NUMBER)
+				{
+					return false;
+				}
+
+				OrientPortalFromDirection(Portal, PrevPoint, TravelDirection, OrientedPortal, CurrentRightVertexIdx, CurrentLeftVertexIdx);
+			}
+
+			OutPortals.push_back(OrientedPortal);
+			PreviousRightVertexIdx = CurrentRightVertexIdx;
+			PreviousLeftVertexIdx = CurrentLeftVertexIdx;
 		}
 		OutPortals.push_back({ EndPos, EndPos });
 		OutFailedPortalIndex = -1;

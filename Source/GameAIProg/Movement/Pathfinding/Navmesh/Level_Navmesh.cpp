@@ -49,13 +49,6 @@ void ALevel_Navmesh::BeginPlay()
 		Agent->SetSteeringBehavior(&PathFollow);
 	}
 
-	auto NavPoly = std::make_unique<TriPolygon>();
-	for (TArray<FVector> const& Tri : ExtractNavMeshTris())
-	{
-		NavPoly->AddTriangle(Tri);
-	}
-
-	NavigationGraph = std::make_unique<GameAI::NavGraph>(std::move(NavPoly));
 	Renderer = std::make_unique<GameAI::GraphRenderer>(GetWorld());
 
 	GameAI::GraphRenderOptions RenderOptions{};
@@ -65,11 +58,20 @@ void ALevel_Navmesh::BeginPlay()
 	RenderOptions.bDrawConnections = true;
 	RenderOptions.bDrawConnectionWeights = false;
 	Renderer->SetRenderOptions(RenderOptions);
+
+	RebuildNavigationGraph(true);
 }
 
 void ALevel_Navmesh::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	NavMeshRefreshAccumulator += DeltaTime;
+	if (NavMeshRefreshAccumulator >= 0.5f)
+	{
+		NavMeshRefreshAccumulator = 0.0f;
+		RebuildNavigationGraph();
+	}
 
 	if (NavigationGraph)
 	{
@@ -255,6 +257,46 @@ TArray<TArray<FVector>> ALevel_Navmesh::ExtractNavMeshTris() const
 
 void ALevel_Navmesh::SetTarget()
 {
+	LastRequestedTarget = FVector2D{ LatestMouseWorldPos };
+	bHasRequestedTarget = true;
+	UpdatePathToTarget(LastRequestedTarget);
+}
+
+void ALevel_Navmesh::RebuildNavigationGraph(bool bForceRebuild)
+{
+	TArray<TArray<FVector>> const ExtractedTriangles = ExtractNavMeshTris();
+	int const ExtractedTriangleCount = ExtractedTriangles.Num();
+	if (ExtractedTriangleCount <= 0)
+	{
+		return;
+	}
+
+	if (!bForceRebuild && NavigationGraph && ExtractedTriangleCount == CachedNavMeshTriangleCount)
+	{
+		return;
+	}
+
+	auto NavPoly = std::make_unique<TriPolygon>();
+	for (TArray<FVector> const& Triangle : ExtractedTriangles)
+	{
+		NavPoly->AddTriangle(Triangle);
+	}
+
+	NavigationGraph = std::make_unique<GameAI::NavGraph>(std::move(NavPoly));
+	CachedNavMeshTriangleCount = ExtractedTriangleCount;
+
+	DebugDrawPath.clear();
+	DebugNodePositions.clear();
+	DebugPortals.clear();
+
+	if (bHasRequestedTarget)
+	{
+		UpdatePathToTarget(LastRequestedTarget);
+	}
+}
+
+void ALevel_Navmesh::UpdatePathToTarget(FVector2D const& TargetPosition)
+{
 	if (!Agent || !NavigationGraph)
 	{
 		return;
@@ -262,11 +304,11 @@ void ALevel_Navmesh::SetTarget()
 
 	GameAI::NavMeshPathfinding Pathfinder{};
 	std::vector<FVector2D> Path = Pathfinder.FindPath(Agent->GetPosition(),
-		FVector2D{ LatestMouseWorldPos }, NavigationGraph.get(), DebugNodePositions, DebugPortals);
+		TargetPosition, NavigationGraph.get(), DebugNodePositions, DebugPortals);
 
 	DebugDrawPath = Path;
-
 	PathFollow.SetPath(Path);
+
 	if (!Path.empty())
 	{
 		Agent->SetPosition(Path[0]);

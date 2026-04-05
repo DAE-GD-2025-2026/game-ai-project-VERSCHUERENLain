@@ -40,6 +40,10 @@ private:
 	std::vector<FVector2D> DebugDrawPath{};
 	std::vector<FVector2D> DebugNodePositions{};
 	std::vector<GameAI::NavLine> DebugPortals{};
+	FVector2D LastRequestedTarget{};
+	int CachedNavMeshTriangleCount{-1};
+	float NavMeshRefreshAccumulator{0.0f};
+	bool bHasRequestedTarget{false};
 
 	bool bDrawNavPolyVertices{false};
 	bool bDrawNavPoly{true};
@@ -48,6 +52,8 @@ private:
 	bool bDrawPortals{false};
 
 	void UpdateImGui();
+	void RebuildNavigationGraph(bool bForceRebuild = false);
+	void UpdatePathToTarget(FVector2D const& TargetPosition);
 
 	TArray<TArray<FVector>> ExtractNavMeshTris() const;
 
