@@ -19,6 +19,8 @@ ALevel_GraphTheory::ALevel_GraphTheory()
 void ALevel_GraphTheory::BeginPlay()
 {
 	Super::BeginPlay();
+
+	Renderer = GraphRenderer{GetWorld()};
 	
 	// Add the graph editor to our player
 	if (PlayerController = Cast<APlayerController>(GetWorld()->GetFirstLocalPlayerFromController()->PlayerController); 
@@ -41,12 +43,33 @@ void ALevel_GraphTheory::BeginPlay()
 		Player->SetCameraProjection(ECameraProjectionMode::Orthographic);
 	}
 	
-	// TODO Make the graph and a couple connected nodes here...
+	const int topNodeId = Graph.AddNode(std::make_unique<Node>(FVector2D{0.f, 450.f}));
+	const int leftMidNodeId = Graph.AddNode(std::make_unique<Node>(FVector2D{-250.f, 200.f}));
+	const int rightMidNodeId = Graph.AddNode(std::make_unique<Node>(FVector2D{250.f, 200.f}));
+	const int leftBottomNodeId = Graph.AddNode(std::make_unique<Node>(FVector2D{-250.f, -100.f}));
+	const int rightBottomNodeId = Graph.AddNode(std::make_unique<Node>(FVector2D{250.f, -100.f}));
+
+	Graph.AddConnection(topNodeId, leftMidNodeId);
+	Graph.AddConnection(topNodeId, rightMidNodeId);
+	Graph.AddConnection(leftMidNodeId, rightMidNodeId);
+	Graph.AddConnection(leftMidNodeId, leftBottomNodeId);
+	Graph.AddConnection(rightMidNodeId, rightBottomNodeId);
+	Graph.AddConnection(leftMidNodeId, rightBottomNodeId);
+	Graph.AddConnection(rightMidNodeId, leftBottomNodeId);
+	Graph.AddConnection(leftBottomNodeId, rightBottomNodeId);
+	Graph.SetConnectionCostsToDistances();
 	
 	// Spawn the Agent
 	Agent = GetWorld()->SpawnActor<ASteeringAgent>(SteeringAgentClass, 
 	FVector{0,0,90}, FRotator::ZeroRotator);
-	Agent->SetSteeringBehavior(&PathFollow);
+	if (Agent)
+	{
+		Agent->SetSteeringBehavior(&PathFollow);
+
+		EulerianPath eulerianPath{&Graph};
+		Eulerianity eulerianity{};
+		UpdateAgentPath(eulerianPath.FindPath(eulerianity));
+	}
 }
 
 void ALevel_GraphTheory::BeginDestroy()
@@ -99,16 +122,32 @@ void ALevel_GraphTheory::Tick(float DeltaTime)
 	
 	Renderer.RenderGraph(Graph);
 	
-	// TODO Check if the graph has updated
-	// TODO if so, run the EulerianPath algorithm
-	// TODO if a path is found, have the agent follow it
+	if (PlayerGraphEditor && PlayerGraphEditor->HasGraphUpdated())
+	{
+		Graph.SetConnectionCostsToDistances();
+
+		EulerianPath eulerianPath{&Graph};
+		Eulerianity eulerianity{};
+		UpdateAgentPath(eulerianPath.FindPath(eulerianity));
+	}
 }
 
 void ALevel_GraphTheory::UpdateAgentPath(std::vector<Node*> const& Trail)
 {
+	if (!Agent)
+	{
+		return;
+	}
+
 	std::vector<FVector2D> path{};
 	
-	// TODO convert Node vector to positions vector
+	for (Node* node : Trail)
+	{
+		if (node)
+		{
+			path.push_back(node->GetPosition());
+		}
+	}
 
 	PathFollow.SetPath(path);
 	if (path.size() > 0)
