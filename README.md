@@ -2,7 +2,10 @@
 
 **Created by Lain Verschueren**
 
-Unreal Engine 5 project implementing steering behaviors, flocking, and spatial partitioning for a Game AI course.
+## Extra Assignment Info
+- **Assignment:** Hierarchical Space Partitioning (QuadTree) in Flocking
+- **Week/Topic:** Week 4 - Spatial Partitioning
+- **Editor Startup Level:** `FlockingSpacialPartitioning` (Set in project settings / `DefaultEngine.ini`)
 
 ---
 
